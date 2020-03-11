@@ -28,7 +28,7 @@ MonitorInfo monitors[] = {
     {MonitorID::ONE_A,   "MariaDB-Monitor1A", 0},
     {MonitorID::ONE_B,   "MariaDB-Monitor1B", 0},
     {MonitorID::TWO_A,   "MariaDB-Monitor2A", 1},
-    {MonitorID::TWO_A,   "MariaDB-Monitor2B", 1},
+    {MonitorID::TWO_B,   "MariaDB-Monitor2B", 1},
     {MonitorID::UNKNOWN, "none", -1},
 };
 
@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
     if (test.ok())
     {
         int previous_primary_maxscale = primary_mon1->maxscale_ind;
-        cout << "Stopping MaxScale" << previous_primary_maxscale << ".\n";
+        cout << "Stopping MaxScale " << previous_primary_maxscale << ".\n";
         test.maxscales->stop_maxscale(previous_primary_maxscale);
         int expect_primary_maxscale = (previous_primary_maxscale == 0) ? 1 : 0;
         // The switch to another primary MaxScale should be quick.
@@ -83,8 +83,10 @@ int main(int argc, char* argv[])
             test.expect(current_primary_maxscale == expect_primary_maxscale,
                         "Unexpected primary MaxScale %i.", current_primary_maxscale);
 
-            // Again, check that failover works.
-            test_failover(test, primary_mon2->maxscale_ind);
+            // Again, check that failover works. Wait a few more intervals since failover is not
+	    // immediately enabled on primary MaxScale switch.
+            test.maxscales->wait_for_monitor(failover_mon_ticks, current_primary_maxscale);
+            test_failover(test, current_primary_maxscale);
         }
         cout << "Starting MaxScale" << previous_primary_maxscale << ".\n";
         test.maxscales->start_maxscale(previous_primary_maxscale);
@@ -95,27 +97,31 @@ int main(int argc, char* argv[])
     // locks in turn.
     if (test.ok())
     {
+	const char revisited[] = "Revisited the same monitor";
         cout << "Testing rolling monitor swapping.\n";
         std::set<MonitorID> visited_monitors;
-        while (visited_monitors.size() < 3)
+        while (visited_monitors.size() < 3 && test.ok())
         {
             const auto* primary_mon = get_primary_monitor(test);
             if (test.ok())
             {
                 auto mon_id = primary_mon->id;
-                test.expect(visited_monitors.count(mon_id) == 0, "Revisited the same monitor.");
+                test.expect(visited_monitors.count(mon_id) == 0, revisited);
                 bool released = release_monitor_locks(test, *primary_mon);
+		test.expect(released, "Releasing monitor locks failed");
                 if (released)
                 {
-                    visited_monitors.insert(primary_mon->id);
+                    visited_monitors.insert(mon_id);
                     test.maxscales->wait_for_monitor(maxscale_switch_mon_ticks, primary_mon->maxscale_ind);
-                }
-                else
-                {
-                    break;
                 }
             }
         }
+	// Should have one monitor left.
+	const auto* primary_mon = get_primary_monitor(test);
+	if (test.ok())
+	{
+	    test.expect(visited_monitors.count(primary_mon->id) == 0, revisited);
+	}
     }
 
     if (test.ok())
@@ -157,6 +163,7 @@ bool monitor_is_primary(TestConnections& test, const MonitorInfo& mon_info)
         string& output = res.second;
         if (output == "true")
         {
+            cout << mon_info.name << " from MaxScale " << maxscale_ind << " is the primary monitor.\n";
             rval = true;
         }
         else
@@ -184,15 +191,15 @@ bool release_monitor_locks(TestConnections& test, const MonitorInfo& mon_info)
 void test_failover(TestConnections& test, int maxscale_ind)
 {
     // Test a normal failover.
-    int first_master_id = get_master_server_id(test);
-    test.expect(first_master_id > 0, "No master at start");
+    int first_master_id = get_master_server_id(test, maxscale_ind);
+    test.expect(first_master_id > 0, "No master at start of failover");
     if (test.ok())
     {
         cout << "Stopping server" << first_master_id << " and waiting for failover.\n";
         int master_node = first_master_id - 1;
         test.repl->stop_node(master_node);
         test.maxscales->wait_for_monitor(failover_mon_ticks, maxscale_ind);
-        int second_master_id = get_master_server_id(test);
+        int second_master_id = get_master_server_id(test, maxscale_ind);
         test.expect(second_master_id > 0, "No master after failover");
         if (test.ok())
         {
