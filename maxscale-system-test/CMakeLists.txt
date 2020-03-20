@@ -19,6 +19,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "-std=c++11 -ggdb -Wall -Werror -Wno-format-overflow -
 set(CMAKE_CXX_FLAGS_RELEASE "-std=c++11 -ggdb -Wall -Werror -Wno-format-overflow -Wno-unused-function")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-std=c++11 -ggdb -Wall -Werror -Wno-format-overflow -Wno-unused-function")
 
+# Generate an empty version of the file already here, as the maxtest-library needs it.
+set(CNF_TEMPLATES "" CACHE INTERNAL "")
+configure_file(maxtest/src/test_info.cc.in maxtest/src/test_info.cc COPYONLY)
+
 # utilities.cmake contains all helper functions and extra tools
 include(utilities.cmake)
 
@@ -1158,4 +1162,5 @@ set_tests_properties(bug471_big PROPERTIES TIMEOUT 3600)
 # DO NOT ADD TESTS AFTER THIS #
 ###############################
 
-configure_file(templates.h.in ${CMAKE_CURRENT_BINARY_DIR}/templates.h @ONLY)
+# Generate the correct contents of the file.
+configure_file(maxtest/src/test_info.cc.in maxtest/src/test_info.cc @ONLY)

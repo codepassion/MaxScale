@@ -1,0 +1,11 @@
+#include <templates.h>
+
+const TestDefinition cnf_templates_arr[] =
+{
+@CNF_TEMPLATES@{nullptr, nullptr, nullptr}
+};
+
+const TestDefinition* cnf_templates = cnf_templates_arr;
+const char* default_template = "replication";
+const char* test_dir = "@CMAKE_CURRENT_SOURCE_DIR@";
+
